@@ -46,12 +46,13 @@
 
 /* Includes ---------------------------------------------------------------- */
 #include <PDM.h>
-#include <VoiceTurn_inferencing.h>
+#include <tastewar-project-1_inferencing.h>
 #include <Adafruit_NeoPixel.h>
 
 /* LED strips for left and right signals */
 Adafruit_NeoPixel left(LED_COUNT, LED_PIN_LEFT, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel right(LED_COUNT, LED_PIN_RIGHT, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel onePixel = Adafruit_NeoPixel(1, 8, NEO_GRB + NEO_KHZ800);
 
 static int period = 100; // Time between two individual LED lightings
 static int cycles = 3; // Number of lighting cycles per voice command
@@ -65,11 +66,19 @@ typedef struct {
   unsigned int n_samples;
 } inference_t;
 
+enum
+{
+  rightturn,
+  leftturn,
+} direction;
+
 static inference_t inference;
 static bool record_ready = false;
 static signed short *sampleBuffer;
 static bool debug_nn = false; // Set this to true to see e.g. features generated from the raw signal
 static int print_results = -(EI_CLASSIFIER_SLICES_PER_MODEL_WINDOW);
+
+namespace std {void __throw_out_of_range_fmt(const char*, ...) { while(1); }; }
 
 /**
    @brief      Arduino setup function
@@ -90,6 +99,11 @@ void setup()
   pinMode(RGB_RED, OUTPUT);
   pinMode(RGB_GREEN, OUTPUT);
   pinMode(RGB_BLUE, OUTPUT);
+
+  onePixel.begin();             // Start the NeoPixel object
+  onePixel.clear();             // Set NeoPixel color to black (0,0,0)
+  onePixel.setBrightness(20);   // Affects all subsequent settings
+  onePixel.show();              // Update the pixel state
 
   Serial.begin(115200);
 
@@ -153,10 +167,10 @@ void loop()
 
   // If the words LEFT[0] or RIGHT[1] are trustly detected, activate the corresponding LED strip
   if (result.classification[0].value >= 0.80) { // Trust threshold = 0.80 -> Word detected with a probability above 80%
-    turn(left);
+    turn(leftturn);
   }
   if (result.classification[1].value >= 0.85) {
-    turn(right);
+    turn(rightturn);
   }
 }
 
@@ -308,7 +322,17 @@ static void microphone_inference_end(void)
 
    @param[in]  strip  The LED strip to light on
 */
-static void turn(Adafruit_NeoPixel& strip) {
+static void turn(int direction) {
+  Adafruit_NeoPixel& strip = direction==rightturn?right:left;
+  if ( direction == rightturn )
+  {
+    onePixel.setPixelColor(0, 100, 0, 0); // right == red
+  }
+  else
+  {
+    onePixel.setPixelColor(0, 0, 0, 100); // left == blue
+  }
+  onePixel.show();
   rgb_red(); // Shows the board is BUSY
   for (int i = 0; i < cycles; i++) {
     for (int j = 0; j < strip.numPixels(); j++) { // Lighting animation imitating the turn light signals of modern cars
@@ -321,6 +345,8 @@ static void turn(Adafruit_NeoPixel& strip) {
     delay(2 * period); // Time between cycles is set to twice the time between two individual LED lightings
   }
   rgb_off(); // The board has FINISHED lighting the LED strip
+  onePixel.clear();
+  onePixel.show();
 }
 
 /**
